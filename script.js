@@ -3,10 +3,8 @@
 // =======================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
-import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
-
 
 // =======================================================
 //  2. REFERENCIAS AL DOM Y VARIABLES GLOBALES
@@ -49,10 +47,14 @@ const mediaModal = document.getElementById('mediaModal');
 const mediaModalTitle = document.getElementById('mediaModalTitle');
 const mediaModalBody = document.getElementById('mediaModalBody');
 const closeMediaModalBtn = document.getElementById('closeMediaModalBtn');
+const notificationsBtn = document.getElementById('notificationsBtn');
+const notificationBadge = document.getElementById('notificationBadge');
+const notificationsPanel = document.getElementById('notificationsPanel');
+const notificationsList = document.getElementById('notificationsList');
 
-let app, db, auth, storage, messaging, userId;
+let app, db, auth, storage, userId;
 let firebaseApiKey = "";
-
+let lastNotificationTimestamp = null; // Para controlar el punto rojo
 
 // =======================================================
 //  3. FUNCIONES DE UTILIDAD
@@ -87,7 +89,6 @@ function base64ToBlob(base64, mimeType) {
     return new Blob([ab], { type: mimeType });
 }
 
-
 // =======================================================
 //  4. LÓGICA DE FIREBASE Y AUTENTICACIÓN
 // =======================================================
@@ -98,14 +99,13 @@ async function setupFirebase() {
             apiKey: "AIzaSyA_4H46I7TCVLnFjet8fQPZ006latm-mRE",
             authDomain: "loginliverpool.firebaseapp.com",
             projectId: "loginliverpool",
-            storageBucket: "loginliverpool.firebasestorage.app",
+            storageBucket: "loginliverpool.appspot.com",
             messagingSenderId: "704223815941",
             appId: "1:704223815941:web:c871525230fb61caf96f6c",
-            measurementId: "G-QFEPQ4TSPY"
         };
         firebaseApiKey = firebaseConfig.apiKey;
         app = initializeApp(firebaseConfig);
-        db = getFirestore(app); auth = getAuth(app); storage = getStorage(app); messaging = getMessaging(app);
+        db = getFirestore(app); auth = getAuth(app); storage = getStorage(app);
         
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -114,7 +114,7 @@ async function setupFirebase() {
                 authSection.classList.add('hidden');
                 appSection.classList.remove('hidden');
                 listenForAppointments();
-                requestNotificationPermission(); 
+                listenForNotifications();
             } else {
                 userId = null;
                 authSection.classList.remove('hidden');
@@ -164,7 +164,6 @@ async function handleLogout() {
     }
 }
 
-
 // =======================================================
 //  5. GESTIÓN DE CITAS (CRUD)
 // =======================================================
@@ -182,6 +181,13 @@ function renderAppointments(appointments) {
             'no-asistimos': { text: 'No Asistida', class: 'no-asistimos', icon: 'fa-times-circle' },
             pendiente: { text: 'Pendiente', class: 'pendiente', icon: 'fa-hourglass-half' }
         }[appointment.status || 'pendiente'];
+        
+        const isOwner = userId === appointment.ownerId;
+        const ownerActionsHTML = isOwner ? `
+            <button class="btn-action-card" data-action="edit" title="Editar"><i class="fas fa-pencil-alt"></i></button>
+            <button class="btn-action-card" data-action="delete" title="Eliminar"><i class="fas fa-trash-alt"></i></button>
+        ` : '';
+
         const cardElement = document.createElement('div');
         cardElement.className = 'card-appointment';
         cardElement.setAttribute('data-appointment-id', appointment.id);
@@ -206,8 +212,7 @@ function renderAppointments(appointments) {
                         ${appointment.status !== 'no-asistimos' ? `<button class="btn-action-card" data-action="miss" title="Marcar como No Asistida"><i class="fas fa-times"></i></button>` : ''}
                         ${appointment.status !== 'pendiente' ? `<button class="btn-action-card" data-action="reset" title="Marcar como Pendiente"><i class="fas fa-history"></i></button>` : ''}
                         <div class="flex-grow"></div>
-                        <button class="btn-action-card" data-action="edit" title="Editar"><i class="fas fa-pencil-alt"></i></button>
-                        <button class="btn-action-card" data-action="delete" title="Eliminar"><i class="fas fa-trash-alt"></i></button>
+                        ${ownerActionsHTML}
                     </div>
                 </div>
             </div>`;
@@ -216,10 +221,9 @@ function renderAppointments(appointments) {
 }
 async function listenForAppointments() {
     if (!userId) return;
-    const q = query(collection(db, `users/${userId}/appointments`));
+    const q = query(collection(db, "appointments"), orderBy("dateTime", "desc"));
     onSnapshot(q, (snapshot) => {
         const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        appointments.sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
         renderAppointments(appointments);
     }, (error) => {
         console.error("Error al escuchar citas:", error);
@@ -229,7 +233,7 @@ async function listenForAppointments() {
 async function toggleAppointmentStatus(id, status) {
     showLoading();
     try {
-        const appointmentRef = doc(db, `users/${userId}/appointments`, id);
+        const appointmentRef = doc(db, `appointments`, id);
         await updateDoc(appointmentRef, { status: status });
         showMessage('Estado de la cita actualizado.', 'success');
     } catch (error) {
@@ -245,7 +249,7 @@ async function saveAppointment(event) {
     const id = appointmentIdInput.value;
     let currentStatus = 'pendiente';
     if (id) {
-        const docRef = doc(db, `users/${userId}/appointments`, id);
+        const docRef = doc(db, `appointments`, id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) { currentStatus = docSnap.data().status; }
     }
@@ -254,7 +258,7 @@ async function saveAppointment(event) {
         dateTime: `${appointmentDateInput.value}T${appointmentTimeInput.value}`,
         description: appointmentDescriptionInput.value,
         icon: customIconInput.value || iconPreview.className,
-        userId: userId,
+        ownerId: userId,
         status: currentStatus,
         location: appointmentLocationInput.value,
         videoUrl: appointmentVideoUrlInput.value,
@@ -274,10 +278,10 @@ async function saveAppointment(event) {
         }
         appointmentData.imageUrl = imageUrlToSave;
         if (id) {
-            await updateDoc(doc(db, `users/${userId}/appointments`, id), appointmentData);
+            await updateDoc(doc(db, `appointments`, id), appointmentData);
             showMessage('Cita actualizada correctamente.', 'success');
         } else {
-            await addDoc(collection(db, `users/${userId}/appointments`), appointmentData);
+            await addDoc(collection(db, `appointments`), appointmentData);
             showMessage('Cita guardada correctamente.', 'success');
         }
         closeAppointmentModal();
@@ -291,7 +295,7 @@ async function saveAppointment(event) {
 async function openEditModal(id) {
     showLoading();
     try {
-        const docRef = doc(db, `users/${userId}/appointments`, id);
+        const docRef = doc(db, `appointments`, id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
             const data = docSnap.data();
@@ -329,7 +333,7 @@ async function deleteAppointment(id) {
     if (!confirm('¿Estás segura de que quieres eliminar esta cita permanentemente?')) return;
     showLoading();
     try {
-        await deleteDoc(doc(db, `users/${userId}/appointments`, id));
+        await deleteDoc(doc(db, `appointments`, id));
         showMessage('Cita eliminada.', 'success');
     } catch (error) {
         console.error("Error al eliminar cita:", error);
@@ -338,7 +342,6 @@ async function deleteAppointment(id) {
         hideLoading();
     }
 }
-
 
 // =======================================================
 //  6. LÓGICA DE UI (MODAL, TEMA, IMÁGENES)
@@ -355,7 +358,7 @@ function openAddModal() {
 const closeAppointmentModal = () => appointmentModal.classList.add('hidden');
 function showMapModal(location) {
     mediaModalTitle.textContent = "Ubicación de la Cita";
-    const mapUrl = `https://maps.google.com/maps?q=$4{firebaseApiKey}&q=${encodeURIComponent(location)}`;
+    const mapUrl = `https://maps.google.com/maps?q=${encodeURIComponent(location)}&output=embed`;
     mediaModalBody.innerHTML = `<iframe src="${mapUrl}" loading="lazy"></iframe>`;
     mediaModal.classList.remove('hidden');
 }
@@ -436,72 +439,60 @@ function suggestIcon() {
     customIconInput.value = suggestedClass;
 }
 
+// =======================================================
+//  7. SISTEMA DE NOTIFICACIONES EN-APP
+// =======================================================
+function formatTimeAgo(date) {
+    const seconds = Math.floor((new Date() - date) / 1000);
+    let interval = seconds / 31536000; if (interval > 1) return `hace ${Math.floor(interval)} años`;
+    interval = seconds / 2592000; if (interval > 1) return `hace ${Math.floor(interval)} meses`;
+    interval = seconds / 86400; if (interval > 1) return `hace ${Math.floor(interval)} días`;
+    interval = seconds / 3600; if (interval > 1) return `hace ${Math.floor(interval)} horas`;
+    interval = seconds / 60; if (interval > 1) return `hace ${Math.floor(interval)} minutos`;
+    return "hace unos segundos";
+}
 
-// =======================================================
-//  7. NOTIFICACIONES Y EVENT LISTENERS
-// =======================================================
-async function saveFCMToken(token) {
+function renderNotifications(notifications) {
+    notificationsList.innerHTML = '';
+    if (notifications.length === 0) {
+        notificationsList.innerHTML = '<p class="text-center text-secondary p-4">No hay notificaciones</p>';
+    } else {
+        notifications.forEach(notif => {
+            const timeAgo = notif.data.timestamp ? formatTimeAgo(notif.data.timestamp.toDate()) : '';
+            const notifElement = document.createElement('div');
+            notifElement.className = 'notification-item';
+            notifElement.innerHTML = `
+                <div class="icon"><i class="fas ${notif.data.icon || 'fa-bell'}"></i></div>
+                <div class="content">
+                    <p>${notif.data.message}</p>
+                    <div class="time">${timeAgo}</div>
+                </div>`;
+            notificationsList.appendChild(notifElement);
+        });
+    }
+    
+    if (notifications.length > 0 && notifications[0].data.timestamp) {
+        const lastSeenTimestamp = localStorage.getItem('lastSeenNotification');
+        if (!lastSeenTimestamp || notifications[0].data.timestamp.toMillis() > parseInt(lastSeenTimestamp)) {
+            notificationBadge.classList.remove('hidden');
+        }
+    }
+}
+
+function listenForNotifications() {
     if (!userId) return;
-    try {
-        const tokenRef = doc(db, `users/${userId}/fcmTokens`, token);
-        await setDoc(tokenRef, { token: token, createdAt: new Date() });
-        console.log('Token de FCM guardado en Firestore.');
-    } catch (error) {
-        console.error('Error al guardar el token de FCM:', error);
-    }
+    const q = query(collection(db, "notifications"), orderBy("timestamp", "desc"), limit(20));
+    onSnapshot(q, (snapshot) => {
+        const notifications = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+        renderNotifications(notifications);
+    }, (error) => {
+        console.error("Error al escuchar notificaciones:", error);
+    });
 }
 
-async function requestNotificationPermission() {
-    try {
-        if (!('Notification' in window) || !messaging) {
-            console.error("Este navegador no es compatible con las notificaciones.");
-            return;
-        }
-
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const swPath = isLocal ? '/firebase-messaging-sw.js' : '/CitasApp/firebase-messaging-sw.js';
-        
-        const swRegistration = await navigator.serviceWorker.register(swPath);
-        console.log("Service Worker registrado con éxito en el scope:", swRegistration.scope);
-        
-        const permission = await Notification.requestPermission();
-
-        if (permission === 'granted') {
-            showMessage('¡Notificaciones activadas!', 'success');
-            const vapidKey = 'BHEl2UQpgEU8Rd9a1GttWtiUYwbqSJ4nKK7jpQsQxGhFh4xKGaSEH-7hN-EW6zWVBZXeA9PfeMtGGHPNCw0f2G0';
-            
-            const token = await getToken(messaging, { 
-                vapidKey: vapidKey,
-                serviceWorkerRegistration: swRegistration
-            });
-            
-            console.log('Token de FCM obtenido:', token);
-            await saveFCMToken(token);
-
-            // ***** LÓGICA MODIFICADA PARA PRIMER PLANO *****
-            onMessage(messaging, (payload) => {
-                console.log('Mensaje recibido en primer plano:', payload);
-                
-                // Muestra la alerta bonita dentro del sistema (como antes)
-                showMessage(`${payload.notification.title}: ${payload.notification.body}`, 'info');
-                
-                // ADEMÁS, muestra la notificación del sistema operativo
-                const notificationTitle = payload.notification.title;
-                const notificationOptions = {
-                    body: payload.notification.body,
-                    icon: './icon-192.png' // Asegúrate de que este ícono exista
-                };
-
-                // Esta línea crea la notificación del sistema
-                new Notification(notificationTitle, notificationOptions);
-            });
-        }
-    } catch (error) {
-        console.error("Error al configurar notificaciones:", error);
-        showMessage('Error al configurar notificaciones.', 'error');
-    }
-}
-
+// =======================================================
+//  8. EVENT LISTENERS
+// =======================================================
 document.addEventListener('DOMContentLoaded', () => {
     const savedTheme = localStorage.getItem('theme') || 'dark';
     if (savedTheme === 'light') {
@@ -519,6 +510,27 @@ appointmentsGrid.addEventListener('mousemove', e => {
         const y = e.clientY - rect.top;
         card.style.setProperty('--mouse-x', `${x}px`);
         card.style.setProperty('--mouse-y', `${y}px`);
+    }
+});
+
+notificationsBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    notificationsPanel.classList.toggle('show');
+    if (notificationsPanel.classList.contains('show')) {
+        notificationBadge.classList.add('hidden');
+        const q = query(collection(db, "notifications"), orderBy("timestamp", "desc"), limit(1));
+        getDocs(q).then(snapshot => {
+            if (!snapshot.empty) {
+                const latestTimestamp = snapshot.docs[0].data().timestamp.toMillis();
+                localStorage.setItem('lastSeenNotification', latestTimestamp);
+            }
+        });
+    }
+});
+
+document.addEventListener('click', (event) => {
+    if (notificationsPanel && !notificationsPanel.contains(event.target) && notificationsBtn && !notificationsBtn.contains(event.target)) {
+        notificationsPanel.classList.remove('show');
     }
 });
 
