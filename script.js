@@ -49,7 +49,6 @@ const mediaModal = document.getElementById('mediaModal');
 const mediaModalTitle = document.getElementById('mediaModalTitle');
 const mediaModalBody = document.getElementById('mediaModalBody');
 const closeMediaModalBtn = document.getElementById('closeMediaModalBtn');
-const enableNotificationsBtn = document.getElementById('enableNotificationsBtn'); // Botón de diagnóstico
 
 let app, db, auth, storage, messaging, userId;
 let firebaseApiKey = "";
@@ -99,10 +98,9 @@ async function setupFirebase() {
             apiKey: "AIzaSyA_4H46I7TCVLnFjet8fQPZ006latm-mRE",
             authDomain: "loginliverpool.firebaseapp.com",
             projectId: "loginliverpool",
-            storageBucket: "loginliverpool.firebasestorage.app",
+            storageBucket: "loginliverpool.appspot.com",
             messagingSenderId: "704223815941",
             appId: "1:704223815941:web:c871525230fb61caf96f6c",
-            measurementId: "G-QFEPQ4TSPY"
         };
         firebaseApiKey = firebaseConfig.apiKey;
         app = initializeApp(firebaseConfig);
@@ -115,11 +113,7 @@ async function setupFirebase() {
                 authSection.classList.add('hidden');
                 appSection.classList.remove('hidden');
                 listenForAppointments();
-                
-                // TEMPORALMENTE DESACTIVADO: La llamada automática se quita para poder probar con el botón manual.
-                // requestNotificationPermission(); 
-                console.log("Inicio de sesión exitoso. Haz clic en el botón de la campana (🔔) para pedir permiso de notificación.");
-
+                requestNotificationPermission(); 
             } else {
                 userId = null;
                 authSection.classList.remove('hidden');
@@ -195,7 +189,7 @@ function renderAppointments(appointments) {
         const videoHTML = appointment.videoUrl ? `<div class="info-item"><i class="fas fa-video fa-fw"></i><button data-action="show-video" data-url="${appointment.videoUrl}">Ver video de referencia</button></div>` : '';
         cardElement.innerHTML = `
             <div class="card-content">
-                <div class="card-image-container" style="background-image: url('${appointment.imageUrl || 'https://images.unsplash.com/photo-1511795409834-ef04bbd51622?q=80&w=2070&auto=format&fit=crop'}')">
+                <div class="card-image-container" style="background-image: url('${appointment.imageUrl || './placeholder.png'}')">
                     <div class="card-header"><div class="status-pill ${statusInfo.class}"><i class="fas ${statusInfo.icon}"></i><span>${statusInfo.text}</span></div><div class="date-display"><div class="date-day">${day}</div><div class="date-month">${month}</div></div></div>
                     <div class="card-footer"><h4>${appointment.title}</h4></div>
                 </div>
@@ -265,7 +259,10 @@ async function saveAppointment(event) {
         videoUrl: appointmentVideoUrlInput.value,
     };
     try {
-        let imageUrlToSave = imagePreview.src.startsWith('https://placehold.co/') ? '' : imagePreview.src;
+        let imageUrlToSave = imagePreview.src;
+        if (imagePreview.src.includes('placeholder.png')) {
+            imageUrlToSave = '';
+        }
         const file = imageUploadInput.files[0];
         const isGenerated = imagePreview.src.startsWith('data:image/');
         if (file || isGenerated) {
@@ -301,11 +298,17 @@ async function openEditModal(id) {
             appointmentForm.reset();
             appointmentIdInput.value = id;
             appointmentTitleInput.value = data.title;
-            const dt = new Date(data.dateTime);
-            appointmentDateInput.value = dt.toISOString().split('T')[0];
-            appointmentTimeInput.value = dt.toTimeString().substring(0, 5);
+            if (data.dateTime && !isNaN(new Date(data.dateTime))) {
+                const dt = new Date(data.dateTime);
+                appointmentDateInput.value = dt.toISOString().split('T')[0];
+                appointmentTimeInput.value = dt.toTimeString().substring(0, 5);
+            } else {
+                console.warn(`Cita con ID ${id} tiene una fecha inválida:`, data.dateTime);
+                appointmentDateInput.value = '';
+                appointmentTimeInput.value = '';
+            }
             appointmentDescriptionInput.value = data.description || '';
-            imagePreview.src = data.imageUrl || 'https://placehold.co/400x200/333/eee?text=Imagen';
+            imagePreview.src = data.imageUrl || './placeholder.png';
             iconPreview.className = `${data.icon || 'fas fa-calendar-alt'} text-3xl text-accent w-8 text-center`;
             customIconInput.value = data.icon || '';
             appointmentLocationInput.value = data.location || '';
@@ -343,6 +346,7 @@ function openAddModal() {
     modalTitle.textContent = 'Nueva Cita';
     appointmentForm.reset();
     appointmentIdInput.value = '';
+    imagePreview.src = './placeholder.png';
     iconPreview.className = 'fas fa-calendar-alt text-3xl text-accent w-8 text-center';
     customIconInput.value = 'fas fa-calendar-alt';
     appointmentModal.classList.remove('hidden');
@@ -350,7 +354,7 @@ function openAddModal() {
 const closeAppointmentModal = () => appointmentModal.classList.add('hidden');
 function showMapModal(location) {
     mediaModalTitle.textContent = "Ubicación de la Cita";
-    const mapUrl = `https://maps.google.com/maps?q=$2{firebaseApiKey}&q=${encodeURIComponent(location)}`;
+    const mapUrl = `https://maps.google.com/maps?q=$4{firebaseApiKey}&q=${encodeURIComponent(location)}`;
     mediaModalBody.innerHTML = `<iframe src="${mapUrl}" loading="lazy"></iframe>`;
     mediaModal.classList.remove('hidden');
 }
@@ -439,34 +443,31 @@ async function saveFCMToken(token) {
     if (!userId) return;
     try {
         const tokenRef = doc(db, `users/${userId}/fcmTokens`, token);
-        await setDoc(tokenRef, {
-            token: token,
-            createdAt: new Date()
-        });
+        await setDoc(tokenRef, { token: token, createdAt: new Date() });
         console.log('Token de FCM guardado en Firestore.');
     } catch (error) {
         console.error('Error al guardar el token de FCM:', error);
     }
 }
-// **** FUNCIÓN CORREGIDA Y FINAL PARA NOTIFICACIONES ****
+
 async function requestNotificationPermission() {
-    console.log("1. Función 'requestNotificationPermission' iniciada.");
     try {
         if (!('Notification' in window) || !messaging) {
-            console.error("2. ERROR: Las notificaciones no son soportadas.");
+            console.error("Este navegador no es compatible con las notificaciones.");
             return;
         }
 
-        // CORRECCIÓN: Usamos una ruta relativa. La etiqueta <base> en el HTML hará el resto.
-        const swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+        // DETECTA EL ENTORNO PARA USAR LA RUTA CORRECTA DEL SERVICE WORKER
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const swPath = isLocal ? '/firebase-messaging-sw.js' : '/CitasApp/firebase-messaging-sw.js';
+        
+        console.log(`Intentando registrar Service Worker en la ruta: ${swPath}`);
+        const swRegistration = await navigator.serviceWorker.register(swPath);
         console.log("Service Worker registrado con éxito en el scope:", swRegistration.scope);
-
-        console.log("3. Solicitando permiso al usuario...");
+        
         const permission = await Notification.requestPermission();
-        console.log("4. El usuario ha respondido. Permiso:", permission);
 
         if (permission === 'granted') {
-            console.log("5. Permiso concedido. Obteniendo token...");
             showMessage('¡Notificaciones activadas!', 'success');
             const vapidKey = 'BHEl2UQpgEU8Rd9a1GttWtiUYwbqSJ4nKK7jpQsQxGhFh4xKGaSEH-7hN-EW6zWVBZXeA9PfeMtGGHPNCw0f2G0';
             
@@ -475,19 +476,16 @@ async function requestNotificationPermission() {
                 serviceWorkerRegistration: swRegistration
             });
             
-            console.log('6. Token de FCM obtenido:', token);
+            console.log('Token de FCM obtenido:', token);
             await saveFCMToken(token);
 
             onMessage(messaging, (payload) => {
                 console.log('Mensaje recibido en primer plano:', payload);
                 showMessage(`${payload.notification.title}: ${payload.notification.body}`, 'info');
             });
-        } else {
-            console.log("5. Permiso denegado por el usuario.");
-            showMessage('Permiso de notificaciones denegado.', 'info');
         }
     } catch (error) {
-        console.error("ERROR CRÍTICO dentro de requestNotificationPermission:", error);
+        console.error("Error al configurar notificaciones:", error);
         showMessage('Error al configurar notificaciones.', 'error');
     }
 }
@@ -527,11 +525,6 @@ customIconInput.addEventListener('input', () => {
     iconPreview.className = `${customIconInput.value || 'fas fa-star'} text-3xl text-accent w-8 text-center`;
 });
 appointmentTitleInput.addEventListener('input', suggestIcon);
-
-enableNotificationsBtn.addEventListener('click', () => {
-    console.log("Botón de campana (🔔) presionado. Llamando a requestNotificationPermission...");
-    requestNotificationPermission();
-});
 
 appointmentsGrid.addEventListener('click', (e) => {
     const button = e.target.closest('button[data-action]');
