@@ -49,7 +49,7 @@ const mediaModal = document.getElementById('mediaModal');
 const mediaModalTitle = document.getElementById('mediaModalTitle');
 const mediaModalBody = document.getElementById('mediaModalBody');
 const closeMediaModalBtn = document.getElementById('closeMediaModalBtn');
-const enableNotificationsBtn = document.getElementById('enableNotificationsBtn'); // Botón de diagnóstico
+const enableNotificationsBtn = document.getElementById('enableNotificationsBtn');
 
 let app, db, auth, storage, messaging, userId;
 let firebaseApiKey = "";
@@ -106,7 +106,7 @@ async function setupFirebase() {
         firebaseApiKey = firebaseConfig.apiKey;
         app = initializeApp(firebaseConfig);
         db = getFirestore(app); auth = getAuth(app); storage = getStorage(app); messaging = getMessaging(app);
-        
+
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userId = user.uid;
@@ -114,11 +114,7 @@ async function setupFirebase() {
                 authSection.classList.add('hidden');
                 appSection.classList.remove('hidden');
                 listenForAppointments();
-                
-                // TEMPORALMENTE DESACTIVADO: La llamada automática se quita para poder probar con el botón manual.
-                // requestNotificationPermission(); 
                 console.log("Inicio de sesión exitoso. Haz clic en el botón de la campana (🔔) para pedir permiso de notificación.");
-
             } else {
                 userId = null;
                 authSection.classList.remove('hidden');
@@ -194,7 +190,7 @@ function renderAppointments(appointments) {
         const videoHTML = appointment.videoUrl ? `<div class="info-item"><i class="fas fa-video fa-fw"></i><button data-action="show-video" data-url="${appointment.videoUrl}">Ver video de referencia</button></div>` : '';
         cardElement.innerHTML = `
             <div class="card-content">
-                <div class="card-image-container" style="background-image: url('${appointment.imageUrl || 'https://images.unsplash.com/photo-1511795409834-ef04bbd51622?q=80&w=2070&auto=format&fit=crop'}')">
+                <div class="card-image-container" style="background-image: url('${appointment.imageUrl || './placeholder.png'}')">
                     <div class="card-header"><div class="status-pill ${statusInfo.class}"><i class="fas ${statusInfo.icon}"></i><span>${statusInfo.text}</span></div><div class="date-display"><div class="date-day">${day}</div><div class="date-month">${month}</div></div></div>
                     <div class="card-footer"><h4>${appointment.title}</h4></div>
                 </div>
@@ -264,7 +260,10 @@ async function saveAppointment(event) {
         videoUrl: appointmentVideoUrlInput.value,
     };
     try {
-        let imageUrlToSave = imagePreview.src.startsWith('https://placehold.co/') ? '' : imagePreview.src;
+        let imageUrlToSave = imagePreview.src;
+        if (imagePreview.src.includes('placeholder.png')) {
+            imageUrlToSave = '';
+        }
         const file = imageUploadInput.files[0];
         const isGenerated = imagePreview.src.startsWith('data:image/');
         if (file || isGenerated) {
@@ -304,7 +303,7 @@ async function openEditModal(id) {
             appointmentDateInput.value = dt.toISOString().split('T')[0];
             appointmentTimeInput.value = dt.toTimeString().substring(0, 5);
             appointmentDescriptionInput.value = data.description || '';
-            imagePreview.src = data.imageUrl || 'https://placehold.co/400x200/333/eee?text=Imagen';
+            imagePreview.src = data.imageUrl || './placeholder.png';
             iconPreview.className = `${data.icon || 'fas fa-calendar-alt'} text-3xl text-accent w-8 text-center`;
             customIconInput.value = data.icon || '';
             appointmentLocationInput.value = data.location || '';
@@ -342,7 +341,7 @@ function openAddModal() {
     modalTitle.textContent = 'Nueva Cita';
     appointmentForm.reset();
     appointmentIdInput.value = '';
-    imagePreview.src = 'https://placehold.co/400x200/333/eee?text=Imagen';
+    imagePreview.src = './placeholder.png';
     iconPreview.className = 'fas fa-calendar-alt text-3xl text-accent w-8 text-center';
     customIconInput.value = 'fas fa-calendar-alt';
     appointmentModal.classList.remove('hidden');
@@ -350,7 +349,7 @@ function openAddModal() {
 const closeAppointmentModal = () => appointmentModal.classList.add('hidden');
 function showMapModal(location) {
     mediaModalTitle.textContent = "Ubicación de la Cita";
-    const mapUrl = `https://maps.google.com/maps?q=$2{firebaseApiKey}&q=${encodeURIComponent(location)}`;
+    const mapUrl = `https://maps.google.com/maps?q=$3{firebaseApiKey}&q=${encodeURIComponent(location)}`;
     mediaModalBody.innerHTML = `<iframe src="${mapUrl}" loading="lazy"></iframe>`;
     mediaModal.classList.remove('hidden');
 }
@@ -448,6 +447,7 @@ async function saveFCMToken(token) {
         console.error('Error al guardar el token de FCM:', error);
     }
 }
+
 async function requestNotificationPermission() {
     console.log("1. Función 'requestNotificationPermission' iniciada.");
     try {
@@ -456,16 +456,29 @@ async function requestNotificationPermission() {
             showMessage("Tu navegador no es compatible con las notificaciones.", "error");
             return;
         }
-        console.log("3. El navegador es compatible. Solicitando permiso al usuario...");
+
+        // **PASO CLAVE: Registrar manualmente el Service Worker con la ruta correcta**
+        // Reemplaza 'CitasApp' con el nombre de tu repositorio si es diferente.
+        const swRegistration = await navigator.serviceWorker.register('/CitasApp/firebase-messaging-sw.js');
+        console.log("Service Worker registrado con éxito en el scope:", swRegistration.scope);
+
+        console.log("3. Solicitando permiso al usuario...");
         const permission = await Notification.requestPermission();
         console.log("4. El usuario ha respondido. Permiso:", permission);
+
         if (permission === 'granted') {
             console.log("5. Permiso concedido. Obteniendo token...");
             showMessage('¡Notificaciones activadas!', 'success');
             const vapidKey = 'BHEl2UQpgEU8Rd9a1GttWtiUYwbqSJ4nKK7jpQsQxGhFh4xKGaSEH-7hN-EW6zWVBZXeA9PfeMtGGHPNCw0f2G0';
-            const token = await getToken(messaging, { vapidKey: vapidKey });
+            
+            const token = await getToken(messaging, { 
+                vapidKey: vapidKey,
+                serviceWorkerRegistration: swRegistration
+            });
+            
             console.log('6. Token de FCM obtenido:', token);
             await saveFCMToken(token);
+
             onMessage(messaging, (payload) => {
                 console.log('Mensaje recibido en primer plano:', payload);
                 showMessage(`${payload.notification.title}: ${payload.notification.body}`, 'info');
