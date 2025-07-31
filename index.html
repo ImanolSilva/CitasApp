@@ -36,26 +36,20 @@
             <h1 class="text-2xl sm:text-3xl font-bold">Mis Citas</h1>
             <div class="flex items-center space-x-2 sm:space-x-3">
                 <span id="userIdDisplay" class="hidden sm:block text-xs text-secondary mr-2"></span>
-                <button id="addAppointmentBtn" class="btn btn-primary flex items-center space-x-2">
-                    <i class="fas fa-plus"></i>
-                    <span class="hidden sm:inline">Nueva Cita</span>
+                <button id="addAppointmentBtn" class="btn btn-primary flex items-center space-x-2"><i class="fas fa-plus"></i><span class="hidden sm:inline">Nueva Cita</span></button>
+                
+                <button id="enableNotificationsBtn" class="btn btn-secondary flex items-center space-x-2" title="Activar Notificaciones Push">
+                    <i class="fas fa-bell"></i>
                 </button>
-                <button id="toggleThemeBtn" class="btn btn-icon" title="Cambiar Tema">
-                    <i class="fas fa-sun" id="themeIcon"></i>
-                </button>
-                <button id="logoutBtn" class="btn btn-icon" title="Cerrar Sesión">
-                    <i class="fas fa-sign-out-alt"></i>
-                </button>
+                
+                <button id="toggleThemeBtn" class="btn btn-icon" title="Cambiar Tema"><i class="fas fa-sun" id="themeIcon"></i></button>
+                <button id="logoutBtn" class="btn btn-icon" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></button>
             </div>
         </header>
 
         <main class="container mx-auto py-6 sm:py-8 px-4">
-            <div id="appointmentsGrid" class="appointments-grid">
-                </div>
-            <p id="noAppointmentsMessage" class="text-center text-secondary mt-8 hidden">
-                <i class="fas fa-calendar-times fa-2x mb-3"></i><br>
-                No tienes citas registradas. ¡Crea una nueva!
-            </p>
+            <div id="appointmentsGrid" class="appointments-grid"></div>
+            <p id="noAppointmentsMessage" class="text-center text-secondary mt-8 hidden"><i class="fas fa-calendar-times fa-2x mb-3"></i><br>No tienes citas registradas.</p>
         </main>
     </section>
 
@@ -106,6 +100,7 @@
     </div>
 
     <div id="messageBox" class="message-box-container hidden"></div>
+
     <script type="module" src="script.js"></script>
 </body>
 </html>

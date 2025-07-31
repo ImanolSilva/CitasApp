@@ -3,7 +3,6 @@
 // =======================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-// MODIFICADO: Se añadió setDoc a la lista de importación
 import { getFirestore, doc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
@@ -50,6 +49,7 @@ const mediaModal = document.getElementById('mediaModal');
 const mediaModalTitle = document.getElementById('mediaModalTitle');
 const mediaModalBody = document.getElementById('mediaModalBody');
 const closeMediaModalBtn = document.getElementById('closeMediaModalBtn');
+const enableNotificationsBtn = document.getElementById('enableNotificationsBtn'); // Botón de diagnóstico
 
 let app, db, auth, storage, messaging, userId;
 let firebaseApiKey = "";
@@ -99,24 +99,30 @@ async function setupFirebase() {
             apiKey: "AIzaSyA_4H46I7TCVLnFjet8fQPZ006latm-mRE",
             authDomain: "loginliverpool.firebaseapp.com",
             projectId: "loginliverpool",
-            storageBucket: "loginliverpool.firebasestorage.app",
+            storageBucket: "loginliverpool.appspot.com",
             messagingSenderId: "704223815941",
             appId: "1:704223815941:web:c871525230fb61caf96f6c",
-            measurementId: "G-QFEPQ4TSPY"
         };
         firebaseApiKey = firebaseConfig.apiKey;
         app = initializeApp(firebaseConfig);
         db = getFirestore(app); auth = getAuth(app); storage = getStorage(app); messaging = getMessaging(app);
+        
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userId = user.uid;
                 userIdDisplay.textContent = `UID: ${userId.substring(0, 8)}...`;
-                authSection.classList.add('hidden'); appSection.classList.remove('hidden');
+                authSection.classList.add('hidden');
+                appSection.classList.remove('hidden');
                 listenForAppointments();
-                requestNotificationPermission();
+                
+                // TEMPORALMENTE DESACTIVADO: La llamada automática se quita para poder probar con el botón manual.
+                // requestNotificationPermission(); 
+                console.log("Inicio de sesión exitoso. Haz clic en el botón de la campana (🔔) para pedir permiso de notificación.");
+
             } else {
                 userId = null;
-                authSection.classList.remove('hidden'); appSection.classList.add('hidden');
+                authSection.classList.remove('hidden');
+                appSection.classList.add('hidden');
                 appointmentsGrid.innerHTML = '';
             }
             hideLoading();
@@ -212,8 +218,7 @@ function renderAppointments(appointments) {
         appointmentsGrid.appendChild(cardElement);
     });
 }
-
-function listenForAppointments() {
+async function listenForAppointments() {
     if (!userId) return;
     const q = query(collection(db, `users/${userId}/appointments`));
     onSnapshot(q, (snapshot) => {
@@ -225,7 +230,6 @@ function listenForAppointments() {
         showMessage("Error al cargar las citas.", 'error');
     });
 }
-
 async function toggleAppointmentStatus(id, status) {
     showLoading();
     try {
@@ -239,7 +243,6 @@ async function toggleAppointmentStatus(id, status) {
         hideLoading();
     }
 }
-
 async function saveAppointment(event) {
     event.preventDefault();
     showLoading();
@@ -286,7 +289,6 @@ async function saveAppointment(event) {
         hideLoading();
     }
 }
-
 async function openEditModal(id) {
     showLoading();
     try {
@@ -318,7 +320,6 @@ async function openEditModal(id) {
         hideLoading();
     }
 }
-
 async function deleteAppointment(id) {
     if (!confirm('¿Estás segura de que quieres eliminar esta cita permanentemente?')) return;
     showLoading();
@@ -347,20 +348,17 @@ function openAddModal() {
     appointmentModal.classList.remove('hidden');
 }
 const closeAppointmentModal = () => appointmentModal.classList.add('hidden');
-
 function showMapModal(location) {
     mediaModalTitle.textContent = "Ubicación de la Cita";
-    const mapUrl = `https://www.google.com/search?q=https://maps.google.com/maps%3Fq%3D%24%24${firebaseApiKey}&q=${encodeURIComponent(location)}`;
+    const mapUrl = `https://maps.google.com/maps?q=$2{firebaseApiKey}&q=${encodeURIComponent(location)}`;
     mediaModalBody.innerHTML = `<iframe src="${mapUrl}" loading="lazy"></iframe>`;
     mediaModal.classList.remove('hidden');
 }
-
 function getYoutubeVideoId(url) {
     const youtubeRegex = /^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const match = url.match(youtubeRegex);
     return match ? match[1] : null;
 }
-
 function showVideoModal(videoUrl) {
     const videoId = getYoutubeVideoId(videoUrl);
     if (videoId) {
@@ -373,12 +371,10 @@ function showVideoModal(videoUrl) {
         window.open(videoUrl, '_blank');
     }
 }
-
 function closeMediaModal() {
     mediaModal.classList.add('hidden');
     mediaModalBody.innerHTML = '';
 }
-
 function toggleTheme() {
     document.body.classList.toggle('light-mode');
     document.body.classList.toggle('dark-mode');
@@ -386,7 +382,6 @@ function toggleTheme() {
     themeIcon.className = `fas ${isDarkMode ? 'fa-sun' : 'fa-moon'}`;
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
 }
-
 window.previewImage = function(event) {
     const file = event.target.files[0];
     if (file) {
@@ -395,7 +390,6 @@ window.previewImage = function(event) {
         reader.readAsDataURL(file);
     }
 }
-
 async function generateImageWithAI() {
     const prompt = appointmentTitleInput.value || appointmentDescriptionInput.value;
     if (!prompt) { return showMessage('Introduce un título para generar una imagen.', 'info'); }
@@ -419,7 +413,6 @@ async function generateImageWithAI() {
         hideLoading();
     }
 }
-
 function suggestIcon() {
     const title = appointmentTitleInput.value.toLowerCase();
     const map = {
@@ -455,30 +448,34 @@ async function saveFCMToken(token) {
         console.error('Error al guardar el token de FCM:', error);
     }
 }
-
 async function requestNotificationPermission() {
-    console.log("Intentando pedir permiso para notificaciones...");
+    console.log("1. Función 'requestNotificationPermission' iniciada.");
     try {
         if (!('Notification' in window) || !messaging) {
-            console.log("Este navegador no soporta notificaciones.");
+            console.error("2. ERROR: Las notificaciones no son soportadas por este navegador.");
+            showMessage("Tu navegador no es compatible con las notificaciones.", "error");
             return;
         }
+        console.log("3. El navegador es compatible. Solicitando permiso al usuario...");
         const permission = await Notification.requestPermission();
+        console.log("4. El usuario ha respondido. Permiso:", permission);
         if (permission === 'granted') {
+            console.log("5. Permiso concedido. Obteniendo token...");
             showMessage('¡Notificaciones activadas!', 'success');
             const vapidKey = 'BHEl2UQpgEU8Rd9a1GttWtiUYwbqSJ4nKK7jpQsQxGhFh4xKGaSEH-7hN-EW6zWVBZXeA9PfeMtGGHPNCw0f2G0';
             const token = await getToken(messaging, { vapidKey: vapidKey });
-            console.log('Token de FCM obtenido:', token);
+            console.log('6. Token de FCM obtenido:', token);
             await saveFCMToken(token);
             onMessage(messaging, (payload) => {
                 console.log('Mensaje recibido en primer plano:', payload);
                 showMessage(`${payload.notification.title}: ${payload.notification.body}`, 'info');
             });
         } else {
+            console.log("5. Permiso denegado por el usuario.");
             showMessage('Permiso de notificaciones denegado.', 'info');
         }
     } catch (error) {
-        console.error("Error con FCM:", error);
+        console.error("ERROR CRÍTICO dentro de requestNotificationPermission:", error);
         showMessage('Error al configurar notificaciones.', 'error');
     }
 }
@@ -518,6 +515,11 @@ customIconInput.addEventListener('input', () => {
     iconPreview.className = `${customIconInput.value || 'fas fa-star'} text-3xl text-accent w-8 text-center`;
 });
 appointmentTitleInput.addEventListener('input', suggestIcon);
+
+enableNotificationsBtn.addEventListener('click', () => {
+    console.log("Botón de campana (🔔) presionado. Llamando a requestNotificationPermission...");
+    requestNotificationPermission();
+});
 
 appointmentsGrid.addEventListener('click', (e) => {
     const button = e.target.closest('button[data-action]');
