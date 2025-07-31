@@ -3,7 +3,8 @@
 // =======================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// MODIFICADO: Se añadió setDoc a la lista de importación
+import { getFirestore, doc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
 
@@ -51,7 +52,7 @@ const mediaModalBody = document.getElementById('mediaModalBody');
 const closeMediaModalBtn = document.getElementById('closeMediaModalBtn');
 
 let app, db, auth, storage, messaging, userId;
-let firebaseApiKey = ""; // Variable para guardar la API Key
+let firebaseApiKey = "";
 
 
 // =======================================================
@@ -103,7 +104,7 @@ async function setupFirebase() {
             appId: "1:704223815941:web:c871525230fb61caf96f6c",
             measurementId: "G-QFEPQ4TSPY"
         };
-        firebaseApiKey = firebaseConfig.apiKey; // Guardamos la API key
+        firebaseApiKey = firebaseConfig.apiKey;
         app = initializeApp(firebaseConfig);
         db = getFirestore(app); auth = getAuth(app); storage = getStorage(app); messaging = getMessaging(app);
         onAuthStateChanged(auth, (user) => {
@@ -111,7 +112,8 @@ async function setupFirebase() {
                 userId = user.uid;
                 userIdDisplay.textContent = `UID: ${userId.substring(0, 8)}...`;
                 authSection.classList.add('hidden'); appSection.classList.remove('hidden');
-                listenForAppointments(); requestNotificationPermission();
+                listenForAppointments();
+                requestNotificationPermission();
             } else {
                 userId = null;
                 authSection.classList.remove('hidden'); appSection.classList.add('hidden');
@@ -168,7 +170,6 @@ function renderAppointments(appointments) {
     appointmentsGrid.innerHTML = '';
     if (appointments.length === 0) { noAppointmentsMessage.classList.remove('hidden'); return; }
     noAppointmentsMessage.classList.add('hidden');
-
     appointments.forEach((appointment, index) => {
         const date = new Date(appointment.dateTime);
         const day = date.getDate();
@@ -179,25 +180,12 @@ function renderAppointments(appointments) {
             'no-asistimos': { text: 'No Asistida', class: 'no-asistimos', icon: 'fa-times-circle' },
             pendiente: { text: 'Pendiente', class: 'pendiente', icon: 'fa-hourglass-half' }
         }[appointment.status || 'pendiente'];
-
         const cardElement = document.createElement('div');
         cardElement.className = 'card-appointment';
         cardElement.setAttribute('data-appointment-id', appointment.id);
         cardElement.style.animationDelay = `${index * 100}ms`;
-
-        const locationHTML = appointment.location
-            ? `<div class="info-item">
-                 <i class="fas fa-map-marker-alt fa-fw"></i>
-                 <button data-action="show-map" data-location="${appointment.location}" title="${appointment.location}">Ver en Mapa</button>
-               </div>`
-            : '';
-        const videoHTML = appointment.videoUrl
-            ? `<div class="info-item">
-                 <i class="fas fa-video fa-fw"></i>
-                 <button data-action="show-video" data-url="${appointment.videoUrl}">Ver video de referencia</button>
-               </div>`
-            : '';
-
+        const locationHTML = appointment.location ? `<div class="info-item"><i class="fas fa-map-marker-alt fa-fw"></i><button data-action="show-map" data-location="${appointment.location}" title="${appointment.location}">Ver en Mapa</button></div>` : '';
+        const videoHTML = appointment.videoUrl ? `<div class="info-item"><i class="fas fa-video fa-fw"></i><button data-action="show-video" data-url="${appointment.videoUrl}">Ver video de referencia</button></div>` : '';
         cardElement.innerHTML = `
             <div class="card-content">
                 <div class="card-image-container" style="background-image: url('${appointment.imageUrl || 'https://images.unsplash.com/photo-1511795409834-ef04bbd51622?q=80&w=2070&auto=format&fit=crop'}')">
@@ -360,11 +348,9 @@ function openAddModal() {
 }
 const closeAppointmentModal = () => appointmentModal.classList.add('hidden');
 
-// ***** FUNCIÓN CORREGIDA Y FINAL PARA EL MAPA *****
 function showMapModal(location) {
     mediaModalTitle.textContent = "Ubicación de la Cita";
-    // CORRECCIÓN: Esta es la URL correcta para la API Embed de Google Maps.
-    const mapUrl = `https://www.google.com/maps/embed/v1/place?key=${firebaseApiKey}&q=${encodeURIComponent(location)}`;
+    const mapUrl = `https://www.google.com/search?q=https://maps.google.com/maps%3Fq%3D%24%24${firebaseApiKey}&q=${encodeURIComponent(location)}`;
     mediaModalBody.innerHTML = `<iframe src="${mapUrl}" loading="lazy"></iframe>`;
     mediaModal.classList.remove('hidden');
 }
@@ -452,10 +438,12 @@ function suggestIcon() {
     customIconInput.value = suggestedClass;
 }
 
-// **NUEVA FUNCIÓN PARA GUARDAR EL TOKEN**
+
+// =======================================================
+//  7. NOTIFICACIONES Y EVENT LISTENERS
+// =======================================================
 async function saveFCMToken(token) {
     if (!userId) return;
-
     try {
         const tokenRef = doc(db, `users/${userId}/fcmTokens`, token);
         await setDoc(tokenRef, {
@@ -467,23 +455,31 @@ async function saveFCMToken(token) {
         console.error('Error al guardar el token de FCM:', error);
     }
 }
-// =======================================================
-//  7. NOTIFICACIONES Y EVENT LISTENERS
-// =======================================================
+
 async function requestNotificationPermission() {
+    console.log("Intentando pedir permiso para notificaciones...");
     try {
-        if (!('Notification' in window) || !messaging) return;
-        if (Notification.permission === 'granted') {
+        if (!('Notification' in window) || !messaging) {
+            console.log("Este navegador no soporta notificaciones.");
+            return;
+        }
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            showMessage('¡Notificaciones activadas!', 'success');
             const vapidKey = 'BHEl2UQpgEU8Rd9a1GttWtiUYwbqSJ4nKK7jpQsQxGhFh4xKGaSEH-7hN-EW6zWVBZXeA9PfeMtGGHPNCw0f2G0';
             const token = await getToken(messaging, { vapidKey: vapidKey });
-            console.log('FCM Token:', token);
+            console.log('Token de FCM obtenido:', token);
+            await saveFCMToken(token);
             onMessage(messaging, (payload) => {
-                console.log('Mensaje en primer plano:', payload);
+                console.log('Mensaje recibido en primer plano:', payload);
                 showMessage(`${payload.notification.title}: ${payload.notification.body}`, 'info');
             });
+        } else {
+            showMessage('Permiso de notificaciones denegado.', 'info');
         }
     } catch (error) {
         console.error("Error con FCM:", error);
+        showMessage('Error al configurar notificaciones.', 'error');
     }
 }
 
