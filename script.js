@@ -98,9 +98,10 @@ async function setupFirebase() {
             apiKey: "AIzaSyA_4H46I7TCVLnFjet8fQPZ006latm-mRE",
             authDomain: "loginliverpool.firebaseapp.com",
             projectId: "loginliverpool",
-            storageBucket: "loginliverpool.appspot.com",
+            storageBucket: "loginliverpool.firebasestorage.app",
             messagingSenderId: "704223815941",
             appId: "1:704223815941:web:c871525230fb61caf96f6c",
+            measurementId: "G-QFEPQ4TSPY"
         };
         firebaseApiKey = firebaseConfig.apiKey;
         app = initializeApp(firebaseConfig);
@@ -457,11 +458,9 @@ async function requestNotificationPermission() {
             return;
         }
 
-        // DETECTA EL ENTORNO PARA USAR LA RUTA CORRECTA DEL SERVICE WORKER
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const swPath = isLocal ? '/firebase-messaging-sw.js' : '/CitasApp/firebase-messaging-sw.js';
         
-        console.log(`Intentando registrar Service Worker en la ruta: ${swPath}`);
         const swRegistration = await navigator.serviceWorker.register(swPath);
         console.log("Service Worker registrado con éxito en el scope:", swRegistration.scope);
         
@@ -479,9 +478,22 @@ async function requestNotificationPermission() {
             console.log('Token de FCM obtenido:', token);
             await saveFCMToken(token);
 
+            // ***** LÓGICA MODIFICADA PARA PRIMER PLANO *****
             onMessage(messaging, (payload) => {
                 console.log('Mensaje recibido en primer plano:', payload);
+                
+                // Muestra la alerta bonita dentro del sistema (como antes)
                 showMessage(`${payload.notification.title}: ${payload.notification.body}`, 'info');
+                
+                // ADEMÁS, muestra la notificación del sistema operativo
+                const notificationTitle = payload.notification.title;
+                const notificationOptions = {
+                    body: payload.notification.body,
+                    icon: './icon-192.png' // Asegúrate de que este ícono exista
+                };
+
+                // Esta línea crea la notificación del sistema
+                new Notification(notificationTitle, notificationOptions);
             });
         }
     } catch (error) {
