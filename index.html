@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Citas | App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-mode">
+    <div id="loadingSpinner" class="loading-spinner"><div class="spinner"></div></div>
+    <section id="authSection" class="min-h-screen flex items-center justify-center p-4">
+        <div class="auth-container">
+            <h2 class="text-3xl font-bold text-center mb-2">Bienvenido</h2>
+            <p class="text-center text-secondary mb-6">Gestiona tus citas de forma sencilla.</p>
+            <div class="space-y-4">
+                <input type="email" id="authEmail" placeholder="Correo electrónico" class="form-control w-full">
+                <input type="password" id="authPassword" placeholder="Contraseña" class="form-control w-full">
+            </div>
+            <div class="mt-6 space-y-3">
+                <button id="loginBtn" class="btn btn-primary w-full">Iniciar Sesión</button>
+                <button id="registerBtn" class="btn btn-secondary w-full">Registrarse</button>
+            </div>
+            <p id="authMessage" class="text-center text-red-400 mt-4 text-sm"></p>
+        </div>
+    </section>
+    <section id="appSection" class="hidden">
+        <header class="app-header">
+            <h1 class="text-2xl sm:text-3xl font-bold">Mis Citas</h1>
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <span id="userIdDisplay" class="hidden sm:block text-xs text-secondary mr-2"></span>
+                <button id="addAppointmentBtn" class="btn btn-primary flex items-center space-x-2"><i class="fas fa-plus"></i><span class="hidden sm:inline">Nueva Cita</span></button>
+                <button id="toggleThemeBtn" class="btn btn-icon" title="Cambiar Tema"><i class="fas fa-sun" id="themeIcon"></i></button>
+                <button id="logoutBtn" class="btn btn-icon" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></button>
+            </div>
+        </header>
+        <main class="container mx-auto py-6 sm:py-8 px-4">
+            <div id="appointmentsGrid" class="appointments-grid"></div>
+            <p id="noAppointmentsMessage" class="text-center text-secondary mt-8 hidden"><i class="fas fa-calendar-times fa-2x mb-3"></i><br>No tienes citas registradas.</p>
+        </main>
+    </section>
+    <div id="appointmentModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle" class="text-2xl font-bold">Nueva Cita</h3>
+                <button id="closeModalBtn" class="text-secondary hover:text-primary text-3xl">×</button>
+            </div>
+            <form id="appointmentForm" class="p-6 space-y-5">
+                <input type="hidden" id="appointmentId">
+                <div><label for="appointmentTitle" class="form-label">Título</label><input type="text" id="appointmentTitle" class="form-control w-full" placeholder="Ej: Cena de Aniversario" required></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div><label for="appointmentDate" class="form-label">Fecha</label><input type="date" id="appointmentDate" class="form-control w-full" required></div>
+                    <div><label for="appointmentTime" class="form-label">Hora</label><input type="time" id="appointmentTime" class="form-control w-full" required></div>
+                </div>
+                <div><label for="appointmentDescription" class="form-label">Descripción (Opcional)</label><textarea id="appointmentDescription" class="form-control w-full h-24 resize-y" placeholder="Añade detalles importantes..."></textarea></div>
+                <div><label for="appointmentLocation" class="form-label">Ubicación del Lugar</label><div class="input-with-icon"><i class="fas fa-map-marker-alt"></i><input type="text" id="appointmentLocation" class="form-control" placeholder="Ej: Av. Siempre Viva 742, Springfield"></div></div>
+                <div><label for="appointmentVideoUrl" class="form-label">Link de Video (Referencia)</label><div class="input-with-icon"><i class="fas fa-video"></i><input type="url" id="appointmentVideoUrl" class="form-control" placeholder="https://youtube.com/watch?v=..."></div></div>
+                <div class="border border-base-300 bg-base-200 p-4 rounded-lg space-y-4">
+                    <label class="form-label">Imagen y Estilo</label>
+                    <div class="flex flex-col sm:flex-row items-center gap-4">
+                        <img id="imagePreview" src="https://placehold.co/400x200/333/eee?text=Imagen" alt="Previsualización" class="w-full sm:w-48 h-28 object-cover rounded-md border-2 border-base-300">
+                        <div class="w-full space-y-3">
+                            <div class="grid grid-cols-2 gap-3">
+                                <button type="button" id="uploadImageBtn" class="btn btn-secondary text-sm"><i class="fas fa-upload mr-2"></i>Subir</button>
+                                <button type="button" id="generateImageBtn" class="btn btn-secondary text-sm"><i class="fas fa-magic mr-2"></i>Con IA</button>
+                                <input type="file" id="imageUpload" accept="image/*" class="hidden" onchange="previewImage(event)">
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <i id="iconPreview" class="fas fa-calendar-alt text-3xl text-accent w-8 text-center"></i>
+                                <input type="text" id="customIconInput" placeholder="Ícono (ej: fas fa-bell)" class="form-control flex-grow" title="Introduce una clase de Font Awesome">
+                                <button type="button" id="suggestIconButton" class="btn btn-icon" title="Sugerir Ícono"><i class="fas fa-lightbulb"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end pt-4"><button type="submit" class="btn btn-primary px-8 py-3 font-bold">Guardar Cita</button></div>
+            </form>
+        </div>
+    </div>
+    <div id="mediaModal" class="modal-overlay hidden">
+        <div class="media-modal-content">
+            <div class="modal-header"><h3 id="mediaModalTitle" class="text-xl font-bold"></h3><button id="closeMediaModalBtn" class="text-secondary hover:text-primary text-3xl">×</button></div>
+            <div id="mediaModalBody" class="media-modal-body"></div>
+        </div>
+    </div>
+    <div id="messageBox" class="message-box-container hidden"></div>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
