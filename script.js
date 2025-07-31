@@ -448,24 +448,36 @@ async function saveFCMToken(token) {
         console.error('Error al guardar el token de FCM:', error);
     }
 }
+// **** FUNCIÓN CORREGIDA Y FINAL PARA NOTIFICACIONES ****
 async function requestNotificationPermission() {
     console.log("1. Función 'requestNotificationPermission' iniciada.");
     try {
         if (!('Notification' in window) || !messaging) {
-            console.error("2. ERROR: Las notificaciones no son soportadas por este navegador.");
-            showMessage("Tu navegador no es compatible con las notificaciones.", "error");
+            console.error("2. ERROR: Las notificaciones no son soportadas.");
             return;
         }
-        console.log("3. El navegador es compatible. Solicitando permiso al usuario...");
+
+        // CORRECCIÓN: Usamos una ruta relativa. La etiqueta <base> en el HTML hará el resto.
+        const swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+        console.log("Service Worker registrado con éxito en el scope:", swRegistration.scope);
+
+        console.log("3. Solicitando permiso al usuario...");
         const permission = await Notification.requestPermission();
         console.log("4. El usuario ha respondido. Permiso:", permission);
+
         if (permission === 'granted') {
             console.log("5. Permiso concedido. Obteniendo token...");
             showMessage('¡Notificaciones activadas!', 'success');
             const vapidKey = 'BHEl2UQpgEU8Rd9a1GttWtiUYwbqSJ4nKK7jpQsQxGhFh4xKGaSEH-7hN-EW6zWVBZXeA9PfeMtGGHPNCw0f2G0';
-            const token = await getToken(messaging, { vapidKey: vapidKey });
+            
+            const token = await getToken(messaging, { 
+                vapidKey: vapidKey,
+                serviceWorkerRegistration: swRegistration
+            });
+            
             console.log('6. Token de FCM obtenido:', token);
             await saveFCMToken(token);
+
             onMessage(messaging, (payload) => {
                 console.log('Mensaje recibido en primer plano:', payload);
                 showMessage(`${payload.notification.title}: ${payload.notification.body}`, 'info');
